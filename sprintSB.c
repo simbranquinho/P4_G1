@@ -4,8 +4,11 @@
 #define LEITURAS_MAX 5
 #define SENSOR_MIN -1
 #define SENSOR_MAX 1023
-#define GAMA_MAX 190
 #define GAMA_MIN -10
+#define GAMA_MAX 190
+
+
+int lerSeq(int input_a[], double temp_a[], int n); //lê a sequência relevante ao sensor, devolve o número de resultados 
 
 
 void cleanBuffer(void); //limpa o buffer de leitura
@@ -13,36 +16,50 @@ double getTemp(double input); //converte valor do sensor em temperatura
 int gama(double temp); //verifica se a temperatura se encontra na gama de valores seguros
 int validInput(int input); //verifica se o input está no range do sensor
 
-//estatísticas
+
 double media(double array[], int n); //devolve a média dos valores da array que receber
 double desvioPadrao(double avg, double array[], int n); //devolve o desvio padrão de uma array, sabendo a média
 double minimum(double array[], int n); //devolve o valor mínimo de uma array
 double maximum(double array[], int n); //devolve o valor máximo de uma array
 
-//mensagens
+
 void printStartup(void); //imprime a mensagem de inicialização
-void printResults(int a1[], double a2[], int n); //imprime os resultados input -> temperatura
+void printResults(int array1[], double array2[], int n); //imprime os resultados input -> temperatura
 void printStats(int n, double max, double min, double avg, double dp); //imprime as estatísticas da temperatura
 
 
 
 int main(void) {
-    double temp;
-    int input;
-    int input_ammount = 0;
     int input_array[LEITURAS_MAX];
     double temp_array[LEITURAS_MAX];
 
     printStartup();
 
-    for(int i = 0; i < LEITURAS_MAX; i++) {
+    int input_ammount = lerSeq(input_array, temp_array, LEITURAS_MAX);
+
+    double avg_temp = media(temp_array, input_ammount);
+    double max_temp = maximum(temp_array, input_ammount);
+    double min_temp = minimum(temp_array, input_ammount);
+    double desvio_padrao = desvioPadrao(avg_temp, temp_array, input_ammount);
+
+    printResults(input_array, temp_array, input_ammount);
+    printStats(input_ammount, max_temp, min_temp, avg_temp, desvio_padrao);
+
+}
+
+
+int lerSeq(int input_a[], double temp_a[], int n) {
+    double temp;
+    int input;
+    int input_ammount = 0;
+
+    for(int i = 0; i < n; i++) {
         printf("Valor medido pelo Sensor: \n");
 
-        while (scanf("%d", &input) != 1 || validInput(input) != 1){
+        while (scanf("%d", &input) != 1 || validInput(input) != 1) {
             cleanBuffer();
 
-            printf("Inválido, o valor deve ser um número inteiro entre 0 e 1023 \n");
-            printf("Valor medido pelo Sensor: \n");
+            printf("Inválido, o valor deve ser um número inteiro entre 0 e 1023 \nValor medido pelo Sensor: \n");
         }
 
         if (input == -1) {
@@ -57,8 +74,8 @@ int main(void) {
                 i--; //para não avançar no ciclo
             }
             else {
-                input_array[i] = input;
-                temp_array[i] = temp;
+                input_a[i] = input;
+                temp_a[i] = temp;
                 input_ammount++;
 
                 printf("A Temperatura é igual a %.2lf ºC\n", temp);
@@ -70,19 +87,11 @@ int main(void) {
 
     }
 
-    double temp_avg = media(temp_array, input_ammount);
-    double max_temp = maximum(temp_array, input_ammount);
-    double min_temp = minimum(temp_array, input_ammount);
-    double desvio_padrao = desvioPadrao(temp_avg, temp_array, input_ammount);
-
-    printResults(input_array, temp_array, input_ammount);
-    printStats(input_ammount, max_temp, min_temp, temp_avg, desvio_padrao);
-
+    return input_ammount;
 }
 
-
 double getTemp(double input) {
-    return 260*input/1023-20;
+    return 260 * input / 1023 - 20;
 }
 
 void cleanBuffer(void) {
@@ -122,14 +131,14 @@ double media(double array[], int n) {
 }
 
 double desvioPadrao(double avg, double array[], int n) {
-    float desvios = 0;
+    float numerador = 0;
     float desvio_padrao = 0;
 
     for (int i = 0; i < n; i++) {
-        desvios += pow(array[i] - avg, 2);
+        numerador += pow(array[i] - avg, 2);
     }
     
-    desvio_padrao = sqrt(desvios / n);
+    desvio_padrao = sqrt(numerador / n);
     return desvio_padrao;
 
 }
@@ -163,11 +172,11 @@ void printStartup(void) {
     printf("Introduza um valor inteiro entre %d e %d, -1 para acabar a leitura\n", SENSOR_MIN + 1, SENSOR_MAX);
 }
 
-void printResults(int a1[], double a2[], int n) {
+void printResults(int array1[], double array2[], int n) {
     printf("\nValores lidos (sensor -> temperatura)");
 
     for (int i = 0; i < n; i++) {
-        printf("\n%d -> %.2lf ºC", a1[i], a2[i]);
+        printf("\n%d -> %.2lf ºC", array1[i], array2[i]);
     }
     
 }
