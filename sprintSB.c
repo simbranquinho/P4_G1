@@ -1,18 +1,40 @@
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
-#define LEITURAS_MAX 5
+#define LEITURAS_MAX 20
+#define TAM_LINHA 128
 #define SENSOR_MIN -1
 #define SENSOR_MAX 1023
 #define GAMA_MIN -10
 #define GAMA_MAX 190
 
+struct sensor {
+    char *nome;
+    int ganho;
+    int desvio;
+};
 
-int lerSeq(int input_a[], double temp_a[], int n); //lê a sequência relevante ao sensor, devolve o número de resultados 
+struct sensor sensores[] = {
+    { "TEMP1", 260, -20 },
+    { "TEMP2", 250, -15 },
+    { "TEMP3", 240, -10 },
+};
 
+#define N_SENSORES ((int)(sizeof sensores / sizeof sensores[0]))
+
+struct leitura { 
+    int sensor_id;
+    int instante;
+    int valor;
+    double temp;
+};
+
+int lerSeq(struct leitura leituras[], int n); //lê a sequência relevante ao sensor, devolve o número de resultados 
+int procurarSensor(char *id); //procura o id definido em 'sensores', devolve o índice se existir, -1 se não
 
 void cleanBuffer(void); //limpa o buffer de leitura
-double getTemp(double input); //converte valor do sensor em temperatura
+double getTemp(struct sensor *s, int valor); //converte valor do sensor em temperatura
 int gama(double temp); //verifica se a temperatura se encontra na gama de valores seguros
 int validInput(int input); //verifica se o input está no range do sensor
 
@@ -24,74 +46,94 @@ double maximum(double array[], int n); //devolve o valor máximo de uma array
 
 
 void printStartup(void); //imprime a mensagem de inicialização
-void printResults(int array1[], double array2[], int n); //imprime os resultados input -> temperatura
-void printStats(int n, double max, double min, double avg, double dp); //imprime as estatísticas da temperatura
+void printStatsForSensor(struct leitura leituras[], int n); //imprime as estatísticas de cada sensor, chama 'printStats'
+void printResults(struct leitura leituras[], int n); //imprime os resultados input -> temperatura
+void printStats(char *nome, int n, double max, double min, double avg, double dp); //imprime as estatísticas da temperatura
 
 
 
 int main(void) {
-    int input_array[LEITURAS_MAX];
-    double temp_array[LEITURAS_MAX];
+
+    struct leitura leituras[LEITURAS_MAX];  
 
     printStartup();
 
-    int input_ammount = lerSeq(input_array, temp_array, LEITURAS_MAX);
+    int total = lerSeq(leituras, LEITURAS_MAX);
 
-    double avg_temp = media(temp_array, input_ammount);
-    double max_temp = maximum(temp_array, input_ammount);
-    double min_temp = minimum(temp_array, input_ammount);
-    double desvio_padrao = desvioPadrao(avg_temp, temp_array, input_ammount);
-
-    printResults(input_array, temp_array, input_ammount);
-    printStats(input_ammount, max_temp, min_temp, avg_temp, desvio_padrao);
+    printResults(leituras, total);
+    printStatsForSensor(leituras, total);
 
 }
 
 
-int lerSeq(int input_a[], double temp_a[], int n) {
-    double temp;
-    int input;
-    int input_ammount = 0;
+int lerSeq(struct leitura leituras[], int n) {
+    char linha[TAM_LINHA];
+    char nome[TAM_LINHA];
+    int total = 0;
 
-    for(int i = 0; i < n; i++) {
-        printf("Valor medido pelo Sensor: \n");
-
-        while (scanf("%d", &input) != 1 || validInput(input) != 1) {
-            cleanBuffer();
-
-            printf("Inválido, o valor deve ser um número inteiro entre 0 e 1023 \nValor medido pelo Sensor: \n");
+    while (total < n) {
+        if (fgets(linha, sizeof(linha), stdin) == NULL) { //lê a linha
+            break; //EOF (end of file) acaba a leitura (não dá erros se acabar o ficheiro sem 'FIM')
         }
-
-        if (input == -1) {
+        
+        if (sscanf(linha, "%s", nome) != 1) { /*verifica se foi escrito um descritor de sensor, e associa-o a 'nome' 
+                                               *(efetivamente verifica se foi premido 'ENTER' sem escrever)*/
+            printf("Linha Inválida\n");
+            continue;
+        }
+        else if (strcmp(nome, "FIM") == 0) { //verifica se foi escrita a mensagem de terminação
             break;
-        } 
-        else {
-            temp = getTemp(input);
-
-            if (gama(temp) != 1) {
-                printf("Valor fora da gama\n");
-                cleanBuffer();
-                i--; //para não avançar no ciclo
-            }
-            else {
-                input_a[i] = input;
-                temp_a[i] = temp;
-                input_ammount++;
-
-                printf("A Temperatura é igual a %.2lf ºC\n", temp);
-                cleanBuffer();
-
-            }
-
         }
 
+        int instante, valor, lixo = 0;
+        int input = sscanf(linha, "%*s %d %d %n", &instante, &valor, &lixo); //associa o resto da linha às variáveis respetivas
+
+        if (input != 2 || linha[lixo] != '\0') { /*deve somente ler valores para 'instante' e 'valor' (sscanf retorna 2)
+                                                  *o único caratere em 'lixo' deve ser terminação de string*/
+            printf("Linha inválida\n");
+            continue;
+        }
+                //"Linha inválida" toma precedência sobre "Sensor desconhecido", daí vem ter de ser avaliada antes
+        int sensor_id = procurarSensor(nome);
+
+        if (sensor_id < 0) {    //verifica se o identificador do sensor foi encontrado
+            printf("Sensor desconhecido\n");
+            continue;
+        }
+        else if (validInput(valor) != 1) {      //verifica se o valor dado foi dentro do range do sensor
+            printf("Valor medido inválido, deve ser entre 0 e 1023\n");
+            continue;
+        }
+
+        double temp = getTemp(&sensores[sensor_id], valor); 
+        if (gama(temp) != 1) {      //verifica se está dentro da gama
+            printf("Valor fora da gama\n");
+            continue;
+        }
+        //associação dos valores ao array das leituras definido em 'main'
+        leituras[total].sensor_id = sensor_id;
+        leituras[total].instante = instante;
+        leituras[total].valor = valor;
+        leituras[total].temp = temp;
+        total++;
+
+        printf("%.2lf\n", temp);
     }
 
-    return input_ammount;
+    return total;
 }
 
-double getTemp(double input) {
-    return 260 * input / 1023 - 20;
+int procurarSensor(char *id) {
+    for (int i = 0; i < N_SENSORES; i++) {
+        if (strcmp(id, sensores[i].nome) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+double getTemp(struct sensor *s, int valor) {
+    return s->ganho * (double)valor / 1023 + s->desvio;
 }
 
 void cleanBuffer(void) {
@@ -99,7 +141,7 @@ void cleanBuffer(void) {
 }
 
 int gama(double temp) {
-    if (temp <= GAMA_MIN || temp >= GAMA_MAX) {
+    if (temp < GAMA_MIN || temp > GAMA_MAX) {
         return 0;
     }
     else {
@@ -118,8 +160,8 @@ int validInput(int input) {
 }
 
 double media(double array[], int n) {
-    float sum = 0;
-    float avg;
+    double sum = 0;
+    double avg;
 
     for (int i = 0; i < n; i++) {
         sum += array[i];
@@ -131,8 +173,8 @@ double media(double array[], int n) {
 }
 
 double desvioPadrao(double avg, double array[], int n) {
-    float numerador = 0;
-    float desvio_padrao = 0;
+    double numerador = 0;
+    double desvio_padrao = 0;
 
     for (int i = 0; i < n; i++) {
         numerador += pow(array[i] - avg, 2);
@@ -169,20 +211,52 @@ double maximum(double array[], int n) {
 
 void printStartup(void) {
     printf("Sistema de Aquisição e Monitorização de Sensores\n");
-    printf("Introduza um valor inteiro entre %d e %d, -1 para acabar a leitura\n", SENSOR_MIN + 1, SENSOR_MAX);
+    printf("Introduza uma leitura no formato SENSOR INSTANTE VALOR, FIM para acabar a leitura\n");
 }
 
-void printResults(int array1[], double array2[], int n) {
-    printf("\nValores lidos (sensor -> temperatura)");
+void printStatsForSensor(struct leitura leituras[], int n) {
+    for (int i = 0; i < N_SENSORES; i++) {      //itera pelos diferentes sensores
+        double temps[LEITURAS_MAX];             //variáveis temporárias, reinicializadas em cada loop
+        int count = 0;
 
-    for (int i = 0; i < n; i++) {
-        printf("\n%d -> %.2lf ºC", array1[i], array2[i]);
+        for (int j = 0; j < n; j++) {           //itera pelas leituras desse sensor
+            if (leituras[j].sensor_id == i) {
+                temps[count++] = leituras[j].temp;
+            }
+            
+        }
+
+        if (count == 0) {
+            continue;
+        }
+
+        double avg = media(temps, count);
+        double max = maximum(temps, count);
+        double min = minimum(temps, count);
+        double dp = desvioPadrao(avg, temps, count);
+
+        printStats(sensores[i].nome, count, max, min, avg, dp);
+        
     }
     
 }
 
-void printStats(int n, double max, double min, double avg, double dp) {
-    printf("\n \nNúmero de valores lidos: %d \n", n);
+void printResults(struct leitura leituras[], int n) {
+    printf("\nValores lidos (nome instante sensor -> temperatura)\n");
+
+    for (int i = 0; i < n; i++) {
+        printf("%s %d: %3d -> %6.2lf ºC\n", 
+            sensores[leituras[i].sensor_id].nome, //variável 'nome' do array 'sensores', no índice guardado na variável 'sensor_id' de 'leituras', no índice i
+            leituras[i].instante, 
+            leituras[i].valor, 
+            leituras[i].temp);
+    }
+    
+}
+
+void printStats(char *nome, int n, double max, double min, double avg, double dp) {
+    printf("\nSensor %s\n", nome);
+    printf("Número de valores lidos: %d \n", n);
     printf("Temperatura máxima: %.2lf ºC\n", max);
     printf("Temperatura mínima: %.2lf ºC\n", min);
     printf("Temperatura média: %.2lf ºC\n", avg);
